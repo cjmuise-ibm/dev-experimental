@@ -27,21 +27,13 @@ time.clock() # Start execution clock
 
 class PCCA(object):
 
-  def __init__(self,checkpoint_interval=250):
-    self._program_name = __file__
-    self._graph = None
-    self._simulator_world = None
-    self._planning_predicates = None # Planning_Predicate.predicate_list # Contains list of (func.__name__, func, (self._positive_template_string, self._negative_template_string)) tuples
+  def __init__(self, planning_predicates):
+    # self._program_name = __file__
+    self._planning_predicates = planning_predicates # Planning_Predicate.predicate_list # Contains list of (func.__name__, func, (self._positive_template_string, self._negative_template_string)) tuples
     self._state_history = []
     self._state_history_timestamps = []
-    self._checkpoint_interval = checkpoint_interval
     self._last_timestamp_graphed = 0
     self._transition_counts = {} # Dict[State str][Action str][State str] = TransitionCount int
-    self._timer_offset = time.time() # Accommodate fact that Windows machines use clock() to report delta since its first call, while UNIX
-                                     # uses it to report raw CPU clock time
-    self._rewards_applied = [] # (reward, timestamp) tuples to apply
-    self._discontinuities = [] # timestamp discontinuities to use as boundaries for halting reward propagation
-
     # Load behavior graph from previous examples, if it exists
     self._graph = nx.MultiDiGraph()
 
@@ -78,40 +70,6 @@ class PCCA(object):
       f.write("\n")
     f.close()
 
-  def save_to_file(self, filename):
-    self._planning_predicates = Planning_Predicate.predicate_list # Save predicates
-
-    #graph_data = json_graph.node_link_data(self._graph)
-    f = open(filename+'-graph.pkl','wb')
-    pickle.dump(self._graph,f)
-    f.close()
-    tmp_g = self._graph
-    tmp_a = self._actions
-    self._graph = None
-    #self._actions = None
-    f = open(filename+'-pcca.pkl','wb')
-    pickle.dump(self,f)
-    f.close()
-    self._graph = tmp_g
-    self._actions = tmp_a
-    return
-
-  def export_graph_json(self,filename=None):
-    # Turn graph into JSON, return a JSON obj string if filename is None, otherwise write to filename
-    self.compile_to_graph()
-    graph_data = json_graph.node_link_data(self._graph)
-    graph_data['pcca_info'] = {}
-    graph_data['pcca_info']['predicates'] = self._graph.predicates
-    json_str = json.dumps(graph_data)
-    if filename is None:
-      return json_str
-    else:
-      output_str = 'graph = %s; graph.action_count=%d;' % (json_str, len(self._call_trajectory))
-      f = open(filename,'w')
-      f.write(output_str)
-      f.close()
-      return
-
   def add_state_observation(self, timestamp, state_vector):
     state = State(state_vector,Planning_Predicate.get_predicate_functions())
     self._state_history.append(state)
@@ -129,28 +87,6 @@ class PCCA(object):
     hi = hi if hi is not None else len(a) # hi defaults to len(a)
     pos = bisect_left(a,x,lo,hi)          # find insertion position
     return (pos if pos != hi and a[pos] == x else -1) # don't walk off the end
-
-  def add_trajectory_entry(self, state, action, args, timestamp):
-    entry = TrajectoryEntry(state, action, args, timestamp)
-
-    # Track action counts
-    action = str(entry)
-    #if action not in self._action_counts:
-      #self._action_counts[action] = 1
-    #else:
-      #self._action_counts[action] += 1
-
-    self._call_trajectory.append(entry) # Log action for bookkeeping purposes
-    self.add_state_observation(timestamp,state) # Record initial state (pre-function call)
-
-    print "Added entry for action %s at time %g " % (action, timestamp)
-
-    if len(self._call_trajectory) % self._checkpoint_interval == 0:
-      print "Checkpointed at recorded action # %d" % len(self._call_trajectory)
-      self.save_to_file('./checkpoint-%d' % len(self._call_trajectory))
-      self.save_predicates()
-      self.export_graph_json('./checkpoint-%d.js' % len(self._call_trajectory))
-    return entry
 
   def populate_state_list(self):
     #  Adds states for each world state observed in state_history list
@@ -176,7 +112,6 @@ class PCCA(object):
     Take all observed states and convert them into graph nodes, storing the result in self._graph
     '''
     # Partial graph construction not 100% tested/functional yet - modifying edge transition probs not done.
-    self._last_timestamp_graphed = -1
     self._graph = nx.MultiDiGraph()
     self._states = []
     self._transition_counts = {} # [State][Action][State]
@@ -198,8 +133,6 @@ class PCCA(object):
 
     # Crawl each entry in the action history of the program's execution to set up the transition dynamics table
     for entry in self._call_trajectory:
-      if entry._before_timestamp < self._last_timestamp_graphed and entry._after_timestamp < self._last_timestamp_graphed: continue
-
       # Connect all states between entry.before_state and entry.after_state
       prior_state_idx = self.get_nearest_state_idx(entry._before_timestamp)
       if entry._after_state == None:
@@ -287,19 +220,6 @@ class PCCA(object):
           self._graph.add_edge(*edge,
                                weight=state_transitions[after_state][max(state_transitions[after_state])],
                                action=state_transitions[after_state], reward=0.)
-      '''
-      for action in self._transition_counts[before_state]:
-        for after_state in self._transition_counts[before_state][action]:
-          weight = self._transition_counts[before_state][action][after_state] / total_observed_transitions
-          edge = (str(before_state),str(after_state))
-          self._graph.add_edge(*edge, weight=weight, reward=0., action=action)
-      '''
-    # Apply reward signals
-    for reward in self._rewards_applied:
-      if reward._timestamp > self._last_timestamp_graphed:
-        self.apply_reward_to_transitions(reward._reward, reward._timestamp)
-
-    self._last_timestamp_graphed = time.time()
 
     self._graph.predicates = [x[0] for x in Planning_Predicate.predicate_list]
 
@@ -312,68 +232,6 @@ class PCCA(object):
       if node[0] == target_state_str:
         return node
     return None
-
-  def store_reward(self, reward, timestamp):
-    r = RewardEntry(reward, timestamp)
-    print "Stored reward of %g at time %g" % (reward, timestamp)
-    self._rewards_applied.append(r)
-    return r
-
-  def apply_reward_to_transitions(self, reward, apply_at_timestamp, decay_rate=0.9, learning_rate=0.05, cutoff_threshold=0.1):
-    #self.compile_to_graph()
-
-    state_idx_at_event = self.get_nearest_state_idx(apply_at_timestamp + 1e-5)
-    if state_idx_at_event is None:
-      return False
-
-    cur_action_idx = len(self._call_trajectory)-1 # Find preceeding action
-    while self._call_trajectory[cur_action_idx]._after_timestamp > apply_at_timestamp and cur_action_idx > 0:
-      cur_action_idx -= 1
-
-    if len(self._discontinuities) == 0:
-      discontinuity_idx = None
-    else:
-      discontinuity_idx = max(0, bisect_left(self._discontinuities, apply_at_timestamp) - 1)
-
-    cur_state_idx = state_idx_at_event
-    cur_reward = reward
-    last_rewarded_state = None
-    # Backtrack through state history, applying negative reward.
-    while cur_state_idx > 0:
-
-      if discontinuity_idx is not None and self._state_history_timestamps[cur_state_idx] < self._discontinuities[discontinuity_idx]:
-        print "Hit discontinuity at %g at state %s! Started applying at state entry %d, stopped at state entry %d." % (self._discontinuities[discontinuity_idx], str(self._state_history[cur_state_idx]), state_idx_at_event, cur_state_idx)
-        return True
-
-      if abs(cur_reward) < cutoff_threshold:
-        return True
-
-      graph_node = self.get_graph_node(self._state_history[cur_state_idx])
-      if graph_node is None:
-        raise Exception('Non-existent graph node pulled from state history')
-
-      if graph_node != last_rewarded_state:
-        # Perform value update
-        state_reward = graph_node[1]['reward']
-        new_reward = (1. - learning_rate) * state_reward + learning_rate * cur_reward
-        print "Set new reward of %g to state %s." % (new_reward, str(graph_node[0]))
-        graph_node[1]['reward'] = new_reward
-        last_rewarded_state = graph_node
-      # Apply decay at each 'action' timestamp
-      while cur_action_idx >= 0 and self._call_trajectory[cur_action_idx]._after_timestamp >= self._state_history_timestamps[cur_state_idx]:
-        cur_reward *= decay_rate
-        cur_action_idx -= 1
-
-      # If current reward/penalty magnitude < cutoff_threshold, then return
-      cur_state_idx -= 1
-
-    return True
-
-  def add_discontinuity(self, timestamp):
-    if timestamp not in self._discontinuities:
-      self._discontinuities.append(timestamp)
-    return
-
 
 
   #################################
@@ -1109,79 +967,5 @@ class PCCA(object):
     return explanation[7:]  # Contains the 'when' portion of the policy explanation
 
 
-  ##################################################################################
-  '''
-    PCCA Mode Identification
-  '''
-  ##################################################################################
-  # TODO
-  def identify_clusters(self, graph):
-    # Given graph, return a list of nominal and failure clusters with node memberships
-    # USE CASE: Build PCCA to use for identifying mode frontiers
-
-
-    ##################################################################################
-    ################# CLASSIFY NODES AS EITHER NOMINAL OR FAILURE ####################
-    ##################################################################################
-    nominal_nodes = []
-    failure_nodes = []
-    FAILURE_THRESHOLD = -1.
-
-    # TODO: Look into transitioning to a two-threshold model with 3 classes: Definite FAILURE, Uncertain, Definite NOMINAL (Classification with rejection option)
-    for node in graph.nodes(data=True):
-      if node[1]['reward'] < FAILURE_THRESHOLD:
-        failure_nodes.append(node[0]) # Only append state identifier to list
-      else:
-        nominal_nodes.append(node[0]) # Only append state identifier to list
-
-    ##################################################################################
-    ########################### SUBCLASSIFY FAILURE MODES ############################
-    ##################################################################################
-
-
-    nominal_clusters = [] # List of lists
-    failure_clusters = [] # List of lists
-    # Run optimization on cluster memberships, with succinctness-based objective function
-
-    return nominal_clusters, failure_clusters
-
-
-  # TODO
-  def solve_for_cluster_transition_description(self, graph, from_cluster_nodes, to_cluster_nodes):
-    # Return the best covering set describing the transition between two clusters --
-    # * Describe the delta between linked states
-    # USE CASE: When does the robot enter gripper failure? -- Solve_for_state_description for all nodes entering to_cluster that aren't in to_cluster
-    # USE CASE: What is gripper failure? -- Maybe use solve_for_state_description to compare difference between TO and FROM cluster?
-
-    predicate_list = [] # List of lists for DNF-form description. Outer lists are OR'd together, inner lists are AND'd together.
-    return predicate_list
-
-
-
-  # TODO
-  def get_cluster_transition_edges(self, graph, from_cluster_nodes, to_cluster_nodes):
-    # Returns the set of edges that traverse any subset of from_cluster_nodes to to_cluster_nodes
-    # Also returns sets of nodes not included in the from_set and to_set
-
-    # Returned variables
-    transition_edges = []
-    from_inactive_nodes = {}
-    from_frontier_nodes = {}
-    to_inactive_nodes = {}
-    to_frontier_nodes = {}
-
-    # Isolate all edges that involve from or to cluster:
-    for edge in self._graph.edges(data=True):
-      edge_from, edge_to = edge[0], edge[1]
-      if edge_from in from_cluster_nodes and edge_to in to_cluster_nodes:
-        if edge_from not in from_frontier_nodes: from_frontier_nodes[edge_from] = 0
-        from_frontier_nodes[edge_from] += 1
-        # TODO!
-    # Identify all 'frontier' nodes between the clusters:
-
-    return transition_edges, from_inactive_nodes, from_frontier_nodes, to_inactive_nodes, to_frontier_nodes
-
-
-
-main_pcca = PCCA()
+# main_pcca = PCCA()
 # main_pcca = main_pcca.load_from_file(filename)
