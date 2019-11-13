@@ -124,9 +124,9 @@ class Policy(object):
         print (state)
         for char in state:
             if char == "0":
-                predicates.append(False)
+                predicates.append(0)
             elif char == "1":
-                predicates.append(True)
+                predicates.append(1)
         return predicates, self.predicate_list
 
     def perform_boolean_minimization(self, master_predicate_list, include_minterms, exclude_minterms):
@@ -179,14 +179,18 @@ class Policy(object):
             predicates, predicates_list = self.get_predicates(state)  # List of boolean values
             val = 0
             for idx in range(len(predicates)):
+                print ("idx: " + str(idx) + ", predicates[idx]: " + str(predicates[idx]))
                 val |= predicates[idx] << idx
 
+            print ("Val " + str(val))
             if state in state_list:
                 if val not in include_table:
                     include_table[val] = 1
                 else:
                     include_table[val] += 1
             else:
+                print ("state not in state list!!!!")
+                print (state)
                 if val not in exclude_table:
                     exclude_table[val] = 1
                 else:
@@ -202,7 +206,7 @@ class Policy(object):
         for minterm in include_table:
             # print "Added positive minterm: %s (%s)" % (str(minterm), b2s(minterm,len(predicates_list)))
             if minterm in exclude_table:
-                # print "WARNING: positive minterm found in negative minterm table. Removing from negative minterm table."  # Minterms can't be positive and negative.
+                print ("WARNING: positive minterm found in negative minterm table. Removing from negative minterm table.")  # Minterms can't be positive and negative.
                 del exclude_table[minterm]
 
 
@@ -212,6 +216,8 @@ class Policy(object):
                     negative_minterms.remove(minterm)
             else:
                 negative_minterms = exclude_table.keys()
+
+        print ("Negative minterms " + str(negative_minterms))
 
         time1 = datetime.datetime.now()
         # Retrieve minimized formula describing state region:
@@ -232,10 +238,6 @@ class Policy(object):
 
         state_description = (final_predicate_minimization, final_predicate_list)
         print (state_description)
-        #
-        # overstatement, understatement = self.evaluate_state_description(state_list, final_predicate_minimization, final_predicate_list)
-        #
-        # print "Overstatement %g, Understatement %g." % (overstatement, understatement)
         return state_description, time_diff.total_seconds()
 
     def solve_for_state_description(self, state_list, total_state_list=None):
@@ -268,6 +270,7 @@ class Policy(object):
         @param threshold Maximum number of action clusters to include in summary
         '''
         action_clusters = self.identify_action_clusters(state_list)
+
         '''
         Build explanations for each state list
         '''
@@ -275,7 +278,8 @@ class Policy(object):
 
         # action clusters: action_clusters[action_str] = [state1, state2]
         for action_type in action_clusters:
-            descriptions[action_type] = self.solve_for_state_description(state_list=action_clusters[action_type])
+            if action_type in action_list or action_list == None:
+                descriptions[action_type] = self.solve_for_state_description(state_list=action_clusters[action_type])
 
         return descriptions
 
@@ -294,20 +298,22 @@ class Policy(object):
 
         return ' '.join(individual_descriptions)
 
+    #################################
+    '''
+    Question: What will you do when {state_description}?
+    Type: 'state_summary'
+    Find action clusters within all states covered by state_description
+    '''
+    #################################
+
 policy = Policy('blocksworld-new/p1.json')
 # print (policy.predicate_list)
-print (policy.identify_action_clusters())
-print (policy.describe_action_clusters(["put-down_b2"]))
 
+print ("What do you do? " + str(policy.what_do_you_do()))
 
-
-#################################
-'''
-Question: What will you do when {state_description}?
-Type: 'state_summary'
-Find action clusters within all states covered by state_description
-'''
-#################################
+for action in policy.actions:
+    print ("When do you " + str(action) + "?")
+    print (policy.describe_action_clusters([action]))
 
 
 #################################

@@ -102,7 +102,6 @@ def compute_primes(cubes, vars):
                     if m:
                         nc.add(m)
                         redundant |= set([a, b])
-            print ("executing")
             nsigma.append(nc)
         primes |= set(c for cubes in sigma for c in cubes) - redundant
         sigma = nsigma
