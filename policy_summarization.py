@@ -4,6 +4,8 @@ import time, datetime
 import argparse
 from qm import *
 
+DEBUG = False
+
 class Policy(object):
     predicate_list = None
     predicate_count = -1
@@ -145,10 +147,10 @@ class Policy(object):
 
         # TODO: Possible optimization by minimizing the master_predicate_list size before running Quine-McCluskey
         '''
-
-        print ('Include: %d, Exclude: %d' % (len(include_minterms), len(exclude_minterms)))
-        print ('Include: %s' % include_minterms)
-        print ('Exclude: %s' % exclude_minterms)
+        if DEBUG:
+            print ('Include: %d, Exclude: %d' % (len(include_minterms), len(exclude_minterms)))
+            print ('Include: %s' % include_minterms)
+            print ('Exclude: %s' % exclude_minterms)
 
         qm_minimization = qm(ones=include_minterms, zeros=exclude_minterms)
 
@@ -225,8 +227,8 @@ class Policy(object):
                     negative_minterms.remove(minterm)
             else:
                 negative_minterms = exclude_table.keys()
-
-        print ("Negative minterms " + str(negative_minterms))
+        if DEBUG:
+            print ("Negative minterms " + str(negative_minterms))
 
         time1 = datetime.datetime.now()
         # Retrieve minimized formula describing state region:
@@ -236,14 +238,17 @@ class Policy(object):
         final_predicate_minimization = []
         for minterm in qm_minimization:
             final_predicate_minimization.append(minterm[::-1])
-        print ("Initial QM Minimization: %s" % qm_minimization[::-1])
+
+        if DEBUG:
+            print ("Initial QM Minimization: %s" % qm_minimization[::-1])
 
         final_predicate_list = qm_predicate_list
         time2 = datetime.datetime.now()
         time_diff = time2-time1
 
-        print ("Final QM Minimization: %s" % final_predicate_minimization)
-        print ("Predicates: %s" % str(predicates_list))
+        if DEBUG:
+            print ("Final QM Minimization: %s" % final_predicate_minimization)
+            print ("Predicates: %s" % str(predicates_list))
 
         state_description = (final_predicate_minimization, final_predicate_list)
         return state_description, time_diff.total_seconds()
@@ -356,6 +361,15 @@ class Policy(object):
         description = ' '.join(individual_descriptions)
         return description
 
+    #################################
+    '''
+    Question: Why aren't you doing {action}?
+    Type: 'difference_summary'
+    Find and describe states nearby the current state where {action} is the most probable choice.
+    '''
+    #################################
+
+
 parser = argparse.ArgumentParser(description='Policy Summarization.')
 parser.add_argument('--filename', type=str,
                    help='filename for stack trace')
@@ -364,19 +378,9 @@ args = parser.parse_args()
 policy = Policy(args.filename)
 # print (policy.predicate_list)
 
-# print ("What do you do? I can " + str(policy.what_do_you_do()))
-# for action in policy.actions:
-#     print ("When do you " + str(action) + "?")
-#     print (policy.describe_action_clusters([action]))
-#
-# for state in policy.states:
+print ("What do you do? I can " + str(policy.what_do_you_do()))
+for action in policy.actions:
+    print ("When do you " + str(action) + "?")
+    print (policy.describe_action_clusters([action]))
 
-
-print (policy.describe_state_behaviors([], ["on-table(b2)"]))
-#################################
-'''
-Question: Why aren't you doing {action}?
-Type: 'difference_summary'
-Find and describe states nearby the current state where {action} is the most probable choice.
-'''
-#################################
+print ("What do you do when not on-table(b2)? " + policy.describe_state_behaviors([], ["on-table(b2)"]))
