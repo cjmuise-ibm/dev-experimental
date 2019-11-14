@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import time, datetime
+import argparse
 from qm import *
 
 class Policy(object):
@@ -117,17 +118,20 @@ class Policy(object):
 
         return action_clusters
 
-    def get_predicates(self, state):
+    def get_predicates(self, state, predicate_subset = None):
         predicates = []
         state = list(state[1:-1].split(" "))
         assert (len(state) == len(self.predicate_list))
-        print (state)
         for char in state:
             if char == "0":
                 predicates.append(0)
             elif char == "1":
                 predicates.append(1)
-        return predicates, self.predicate_list
+        predicate_list = self.predicate_list
+        if predicate_subset != None:
+            predicates = [predicates[i] for i in predicate_subset]
+            predicate_list = [predicate_list[i] for i in predicate_subset]
+        return predicates, predicate_list
 
     def perform_boolean_minimization(self, master_predicate_list, include_minterms, exclude_minterms):
         '''
@@ -175,29 +179,34 @@ class Policy(object):
             total_state_list = self.states
         nonspec_is_negative = False
 
+        # NOT FAITHFUL TO ORIGINAL IMPLEMENTATION
+        predicate_subset = []
+        for idx in range(0,len(predicates_list)):
+            tmp_predicate = None
+            for state in total_state_list:
+                state = list(state[1:-1].split(" "))
+                if tmp_predicate == None:
+                    tmp_predicate = state[idx]
+                elif tmp_predicate != state[idx]:
+                    predicate_subset.append(idx)
+                    break
+
         for state in total_state_list:
-            predicates, predicates_list = self.get_predicates(state)  # List of boolean values
+            predicates, predicates_list = self.get_predicates(state, predicate_subset)  # List of boolean values
             val = 0
             for idx in range(len(predicates)):
-                print ("idx: " + str(idx) + ", predicates[idx]: " + str(predicates[idx]))
                 val |= predicates[idx] << idx
 
-            print ("Val " + str(val))
             if state in state_list:
                 if val not in include_table:
                     include_table[val] = 1
                 else:
                     include_table[val] += 1
             else:
-                print ("state not in state list!!!!")
-                print (state)
                 if val not in exclude_table:
                     exclude_table[val] = 1
                 else:
                     exclude_table[val] += 1
-
-        print ("Include: %s" % include_table)
-        print ("Exclude: %s" % exclude_table)
 
         # IDEA: Can use frequency of minterms in truth_table as measure for most important minterms
 
@@ -237,7 +246,6 @@ class Policy(object):
         print ("Predicates: %s" % str(predicates_list))
 
         state_description = (final_predicate_minimization, final_predicate_list)
-        print (state_description)
         return state_description, time_diff.total_seconds()
 
     def solve_for_state_description(self, state_list, total_state_list=None):
@@ -248,15 +256,14 @@ class Policy(object):
 
         # Get predicate explanations for action region
         cover, time_tmp = self.solve_for_state_description_cover(state_list, total_state_list)
-
         explanations = []
 
-        values, predicate_funcs = cover
+        values, predicate_subset_list = cover
         for clause in values:
             clause_explanation = []
             for idx, predicate_value in enumerate(clause):
-                if predicate_value == '1':   clause_explanation.append(self.predicate_list[idx])
-                elif predicate_value == '0':  clause_explanation.append("Not " + self.predicate_list[idx])
+                if predicate_value == '1':   clause_explanation.append(predicate_subset_list[idx])
+                elif predicate_value == '0':  clause_explanation.append("Not " + predicate_subset_list[idx])
 
         clause_summary = ' and '.join(clause_explanation)
         if clause_summary not in explanations:
@@ -278,7 +285,7 @@ class Policy(object):
 
         # action clusters: action_clusters[action_str] = [state1, state2]
         for action_type in action_clusters:
-            if action_type in action_list or action_list == None:
+            if action_type in action_list or action_list == []:
                 descriptions[action_type] = self.solve_for_state_description(state_list=action_clusters[action_type])
 
         return descriptions
@@ -290,7 +297,7 @@ class Policy(object):
         '''
         descriptions = {}
 
-        descriptions = self.generate_action_cluster_descriptions(state_list=self.states, action_list=actions, threshold=len(actions))
+        descriptions = self.generate_action_cluster_descriptions(state_list=self.states, action_list=actions)
 
         individual_descriptions = []
         for action_name in descriptions:
@@ -305,17 +312,67 @@ class Policy(object):
     Find action clusters within all states covered by state_description
     '''
     #################################
+    def resolve_concept_list_to_state_list(self, true_concepts=[], false_concepts=[]):
+        state_list = []
 
-policy = Policy('blocksworld-new/p1.json')
+        if len(true_concepts) == 0 and len(false_concepts) == 0: return state_list
+
+        for state in self.states:
+            state_list_form = list(state[1:-1].split(" "))
+            valid = True
+            for concept_id in true_concepts:
+                if state_list_form[concept_id] != '1':
+                    valid = False
+            for concept_id in false_concepts:
+                if state_list_form[concept_id] != '0':
+                    valid = False
+            if valid:
+                state_list.append(state)
+        return state_list
+
+    def concepts_to_ids(self, concepts):
+        predicate_ids = []
+        if concepts == []: return predicate_ids
+
+        for concept in concepts:
+            predicate_ids.append(self.predicate_list.index(concept))
+        return predicate_ids
+
+    def describe_state_behaviors(self, true_predicates, false_predicates):
+
+        true_predicate_ids = self.concepts_to_ids(true_predicates)
+        false_predicate_ids = self.concepts_to_ids(false_predicates)
+        state_list = self.resolve_concept_list_to_state_list(true_predicate_ids, false_predicate_ids)
+
+        if len(state_list) == 0:
+            return ("No states that I've seen match that description.")
+
+        descriptions = self.generate_action_cluster_descriptions(state_list=state_list, action_list=[], threshold=5)
+
+        individual_descriptions = []
+        for action_name in descriptions:
+            individual_descriptions.append('I do %s when %s.' % (action_name, descriptions[action_name]))
+
+        description = ' '.join(individual_descriptions)
+        return description
+
+parser = argparse.ArgumentParser(description='Policy Summarization.')
+parser.add_argument('--filename', type=str,
+                   help='filename for stack trace')
+
+args = parser.parse_args()
+policy = Policy(args.filename)
 # print (policy.predicate_list)
 
-print ("What do you do? " + str(policy.what_do_you_do()))
+# print ("What do you do? I can " + str(policy.what_do_you_do()))
+# for action in policy.actions:
+#     print ("When do you " + str(action) + "?")
+#     print (policy.describe_action_clusters([action]))
+#
+# for state in policy.states:
 
-for action in policy.actions:
-    print ("When do you " + str(action) + "?")
-    print (policy.describe_action_clusters([action]))
 
-
+print (policy.describe_state_behaviors([], ["on-table(b2)"]))
 #################################
 '''
 Question: Why aren't you doing {action}?

@@ -53,7 +53,6 @@ def qm(ones=[], zeros=[], dc=[]):
     dc = dc or (all - ones - zeros)
     assert len(dc) + len(zeros) + len(ones) == len(dc | zeros | ones) == elts
     primes = compute_primes(ones | dc, numvars)
-    print ("primes computed!")
     return unate_cover(primes, ones)
 
 def unate_cover(primes, ones):
