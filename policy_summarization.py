@@ -38,7 +38,7 @@ class Policy(object):
                     for j in range(0, self.predicate_count):
                         if self.predicate_list[j] in tmp_state:
                             state[j] = 1
-                    state = str(state)
+                    state = str(list(state))
                     self.states.add(state)
 
                     # Transition Counts
@@ -122,6 +122,7 @@ class Policy(object):
 
     def get_predicates(self, state, predicate_subset = None):
         predicates = []
+        state = state.replace(",", "")
         state = list(state[1:-1].split(" "))
         assert (len(state) == len(self.predicate_list))
         for char in state:
@@ -183,6 +184,8 @@ class Policy(object):
 
         # NOT FAITHFUL TO ORIGINAL IMPLEMENTATION
         predicate_subset = []
+        # print ("Predicate list: " + str(predicates_list))
+        # print ("Len predicates: " + str(len(predicates_list)))
         for idx in range(0,len(predicates_list)):
             tmp_predicate = None
             for state in total_state_list:
@@ -376,7 +379,6 @@ parser.add_argument('--filename', type=str,
 
 args = parser.parse_args()
 policy = Policy(args.filename)
-# print (policy.predicate_list)
 
 print ("What do you do? I can " + str(policy.what_do_you_do()))
 for action in policy.actions:
