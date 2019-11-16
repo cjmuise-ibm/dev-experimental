@@ -379,10 +379,49 @@ args = parser.parse_args()
 timeout = args.timeout
 
 true_predicates_per_problem =   {
-                                "domains/blocksworld-new/p1.json": ["on-table(b1)"]
+                                "domains/blocksworld-new/p1.json": ["on-table(b1)"],
+                                "domains/blocksworld-new/p2.json": ["on-table(b1)"],
+                                "domains/blocksworld-new/p3.json": ["on-table(b1)"],
+
+                                "domains/elevators/p1.json": ["have(c2)"],
+                                "domains/elevators/p2.json": ["have(c2)"],
+                                "domains/elevators/p3.json": ["have(c2)"],
+
+                                "domains/tiny-triangle-tireworld/p1.json": ["vehicle-at(l-2-1)"],
+                                "domains/tiny-triangle-tireworld/p2.json": ["vehicle-at(l-2-1)"],
+                                "domains/tiny-triangle-tireworld/p3.json": ["vehicle-at(l-2-1)"],
+
+                                "domains/traffic-light/p1.json": ["vehicle-at(l-2-2)"],
+                                "domains/traffic-light/p2.json": ["vehicle-at(l-2-2)"],
+                                "domains/traffic-light/p3.json": ["vehicle-at(l-2-2)"],
+
+                                "domains/triangle-tireworld/p1.json": ["vehicle-at(l-2-1)"],
+                                "domains/triangle-tireworld/p2.json": ["vehicle-at(l-2-1)"],
+                                "domains/triangle-tireworld/p3.json": ["vehicle-at(l-2-1)"],
+
                                 }
 false_predicates_per_problem =  {
-                                "domains/blocksworld-new/p1.json": []
+                                "domains/blocksworld-new/p1.json": [],
+                                "domains/blocksworld-new/p2.json": [],
+                                "domains/blocksworld-new/p3.json": [],
+
+                                "domains/elevators/p1.json": [],
+                                "domains/elevators/p2.json": [],
+                                "domains/elevators/p3.json": [],
+
+                                "domains/tiny-triangle-tireworld/p1.json": [],
+                                "domains/tiny-triangle-tireworld/p2.json": [],
+                                "domains/tiny-triangle-tireworld/p3.json": [],
+
+                                "domains/traffic-light/p1.json": [],
+                                "domains/traffic-light/p2.json": [],
+                                "domains/traffic-light/p3.json": [],
+
+                                "domains/triangle-tireworld/p1.json": [],
+                                "domains/triangle-tireworld/p2.json": [],
+                                "domains/triangle-tireworld/p3.json": [],
+
+
                                 }
 
 if args.filename != None:
@@ -390,15 +429,20 @@ if args.filename != None:
     policy = Policy(args.filename)
 
     print ("What do you do? I can " + str(policy.what_do_you_do()))
-    # for action in policy.actions:
-    #     print ("When do you " + str(action) + "?")
-    #     try:
-    #         print (func_timeout.func_timeout(timeout, policy.describe_action_clusters, args=([action])))
-    #     except func_timeout.exceptions.FunctionTimedOut:
-    #         print ("Query timed out after " + str(timeout) + " seconds.")
+
+    for action in policy.actions:
+        print ("When do you " + str(action) + "?")
+        try:
+            print (func_timeout.func_timeout(timeout, policy.describe_action_clusters, args=([action])))
+        except func_timeout.exceptions.FunctionTimedOut:
+            print ("Query timed out after " + str(timeout) + " seconds.")
 
 
     true_predicates_statespace = true_predicates_per_problem[args.filename]
     false_predicates_statespace = false_predicates_per_problem[args.filename]
 
-    print ("What do you do when " + str(true_predicates_statespace) + " ? " + policy.describe_state_behaviors(["on-table(b3)"], []))
+    print ("What do you do when " + str(true_predicates_statespace) + " ? ")
+    try: 
+        print ("I " + str(func_timeout.func_timeout(timeout, policy.describe_state_behaviors, args=(["on-table(b3)"], []))))
+    except func_timeout.exceptions.FunctionTimedOut:
+        print ("Query timed out after " + str(timeout) + " seconds.")

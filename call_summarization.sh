@@ -1,4 +1,6 @@
-python3 policy_summarization.py --filename domains/blocksworld-new/p1.json --timeout 10 > /dev/tty
+TIMEOUT=10
+
+python3 policy_summarization.py --filename domains/blocksworld-new/p1.json --timeout $TIMEOUT > /dev/tty
 python3 policy_summarization.py --filename domains/blocksworld-new/p2.json --timeout 10 > /dev/tty
 python3 policy_summarization.py --filename domains/blocksworld-new/p3.json --timeout 10 > /dev/tty
 
