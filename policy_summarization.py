@@ -2,6 +2,7 @@ import json
 import numpy as np
 import time, datetime
 import argparse
+import func_timeout
 from qm import *
 
 DEBUG = False
@@ -40,7 +41,6 @@ class Policy(object):
                             state[j] = 1
                     state = str(list(state))
                     self.states.add(state)
-
                     # Transition Counts
                     if (state, action) in self.transition_counts.keys():
                         self.transition_counts[(state,action)] += 1
@@ -53,8 +53,6 @@ class Policy(object):
                     else:
                         self.state_actions[state] = set()
                         self.state_actions[state].add(action)
-
-
 
     #################################
     '''
@@ -83,16 +81,11 @@ class Policy(object):
         '''
         counts = {}
         max_count = (0, None)
-
         for action in self.state_actions[state]:
             count = self.transition_counts[(state,action)]
             counts[action] = count
             if count > max_count[0]:
                 max_count = (count, action)
-        # print "State " + str(state)
-        # print "Most probable action computation"
-        # print str(max_count)
-        # print str(counts)
         return max_count, counts
 
 
@@ -125,6 +118,7 @@ class Policy(object):
         state = state.replace(",", "")
         state = list(state[1:-1].split(" "))
         assert (len(state) == len(self.predicate_list))
+
         for char in state:
             if char == "0":
                 predicates.append(0)
@@ -324,9 +318,10 @@ class Policy(object):
         state_list = []
 
         if len(true_concepts) == 0 and len(false_concepts) == 0: return state_list
-
         for state in self.states:
-            state_list_form = list(state[1:-1].split(" "))
+            tmp_state = state.replace(",", "")
+            state_list_form = list(tmp_state[1:-1].split(" "))
+
             valid = True
             for concept_id in true_concepts:
                 if state_list_form[concept_id] != '1':
@@ -350,11 +345,11 @@ class Policy(object):
 
         true_predicate_ids = self.concepts_to_ids(true_predicates)
         false_predicate_ids = self.concepts_to_ids(false_predicates)
+
         state_list = self.resolve_concept_list_to_state_list(true_predicate_ids, false_predicate_ids)
 
         if len(state_list) == 0:
             return ("No states that I've seen match that description.")
-
         descriptions = self.generate_action_cluster_descriptions(state_list=state_list, action_list=[], threshold=5)
 
         individual_descriptions = []
@@ -377,12 +372,33 @@ parser = argparse.ArgumentParser(description='Policy Summarization.')
 parser.add_argument('--filename', type=str,
                    help='filename for stack trace')
 
+parser.add_argument('--timeout', type=int,
+                   help='timeout')
+
 args = parser.parse_args()
-policy = Policy(args.filename)
+timeout = args.timeout
 
-print ("What do you do? I can " + str(policy.what_do_you_do()))
-for action in policy.actions:
-    print ("When do you " + str(action) + "?")
-    print (policy.describe_action_clusters([action]))
+true_predicates_per_problem =   {
+                                "domains/blocksworld-new/p1.json": ["on-table(b1)"]
+                                }
+false_predicates_per_problem =  {
+                                "domains/blocksworld-new/p1.json": []
+                                }
 
-print ("What do you do when not on-table(b2)? " + policy.describe_state_behaviors([], ["on-table(b2)"]))
+if args.filename != None:
+    print ("PROBLEM: " + str(args.filename))
+    policy = Policy(args.filename)
+
+    print ("What do you do? I can " + str(policy.what_do_you_do()))
+    # for action in policy.actions:
+    #     print ("When do you " + str(action) + "?")
+    #     try:
+    #         print (func_timeout.func_timeout(timeout, policy.describe_action_clusters, args=([action])))
+    #     except func_timeout.exceptions.FunctionTimedOut:
+    #         print ("Query timed out after " + str(timeout) + " seconds.")
+
+
+    true_predicates_statespace = true_predicates_per_problem[args.filename]
+    false_predicates_statespace = false_predicates_per_problem[args.filename]
+
+    print ("What do you do when " + str(true_predicates_statespace) + " ? " + policy.describe_state_behaviors(["on-table(b3)"], []))
