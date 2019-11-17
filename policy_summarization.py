@@ -378,7 +378,20 @@ parser.add_argument('--timeout', type=int,
 args = parser.parse_args()
 timeout = args.timeout
 
+action_testing = {
+    "domains/ex-blocksworld/p1.json": ['pick-up_b5_b4', 'pick-up-from-table_b3'],
+    "domains/blocksworld-new/p1.json": [],
+    "domains/elevators/p1.json": ['collect_c2_f2_p2', 'go-up_e2_f1_f2'],
+    "domains/tiny-triangle-tireworld/p1.json": [],
+    "domains/traffic-light/p1.json": ['PHASE_NS_GREEN', 'PHASE_NSL_GREEN'],
+    "domains/triangle-tireworld/p1.json": ['move-car_l-1-1_l-2-1', 'move-car_l-2-1_l-3-1', 'changetire_l-2-1']
+}
+
 true_predicates_per_problem =   {
+                                "domains/ex-blocksworld/p1.json": ["on-table(b2)","on-table(b3)","detonated(b2)"],
+                                "domains/ex-blocksworld/p2.json": ["on-table(b1)"],
+                                "domains/ex-blocksworld/p3.json": ["on-table(b1)"],
+
                                 "domains/blocksworld-new/p1.json": ["on-table(b1)"],
                                 "domains/blocksworld-new/p2.json": ["on-table(b1)"],
                                 "domains/blocksworld-new/p3.json": ["on-table(b1)"],
@@ -391,9 +404,9 @@ true_predicates_per_problem =   {
                                 "domains/tiny-triangle-tireworld/p2.json": ["vehicle-at(l-2-1)"],
                                 "domains/tiny-triangle-tireworld/p3.json": ["vehicle-at(l-2-1)"],
 
-                                "domains/traffic-light/p1.json": ["vehicle-at(l-2-2)"],
-                                "domains/traffic-light/p2.json": ["vehicle-at(l-2-2)"],
-                                "domains/traffic-light/p3.json": ["vehicle-at(l-2-2)"],
+                                "domains/traffic-light/p1.json": ["car_in_S-G0_0-7"],
+                                "domains/traffic-light/p2.json": ["car_in_S-G0_0-7"],
+                                "domains/traffic-light/p3.json": ["car_in_S-G0_0-7"],
 
                                 "domains/triangle-tireworld/p1.json": ["vehicle-at(l-2-1)"],
                                 "domains/triangle-tireworld/p2.json": ["vehicle-at(l-2-1)"],
@@ -401,6 +414,10 @@ true_predicates_per_problem =   {
 
                                 }
 false_predicates_per_problem =  {
+                                "domains/ex-blocksworld/p1.json": [],
+                                "domains/ex-blocksworld/p2.json": [],
+                                "domains/ex-blocksworld/p3.json": [],
+
                                 "domains/blocksworld-new/p1.json": [],
                                 "domains/blocksworld-new/p2.json": [],
                                 "domains/blocksworld-new/p3.json": [],
@@ -425,12 +442,13 @@ false_predicates_per_problem =  {
                                 }
 
 if args.filename != None:
-    print ("PROBLEM: " + str(args.filename))
+    print ("\nPROBLEM: " + str(args.filename))
     policy = Policy(args.filename)
 
     print ("What do you do? I can " + str(policy.what_do_you_do()))
 
-    for action in policy.actions:
+    # for action in policy.actions:
+    for action in action_testing[args.filename]:
         print ("When do you " + str(action) + "?")
         try:
             print (func_timeout.func_timeout(timeout, policy.describe_action_clusters, args=([action])))
@@ -442,7 +460,7 @@ if args.filename != None:
     false_predicates_statespace = false_predicates_per_problem[args.filename]
 
     print ("What do you do when " + str(true_predicates_statespace) + " ? ")
-    try: 
-        print ("I " + str(func_timeout.func_timeout(timeout, policy.describe_state_behaviors, args=(["on-table(b3)"], []))))
+    try:
+        print ("I " + str(func_timeout.func_timeout(timeout, policy.describe_state_behaviors, args=(true_predicates_statespace, false_predicates_statespace))))
     except func_timeout.exceptions.FunctionTimedOut:
         print ("Query timed out after " + str(timeout) + " seconds.")
