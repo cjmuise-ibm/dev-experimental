@@ -3,6 +3,7 @@ import numpy as np
 import time, datetime
 import argparse
 import func_timeout
+import itertools
 from qm import *
 
 DEBUG = False
@@ -10,6 +11,7 @@ DEBUG = False
 def get_trace_limit(filename):
     # These are the capped # of traces used for the kcm eval -- gives us a decent number of state/action pairs
     TRACES = {
+        'blocksworld-new': 1000,
         'ex-blocksworld': 1000,
         'elevators': 1000,
         'triangle-tireworld': 1000,
@@ -27,6 +29,7 @@ class Policy(object):
     actions = set()
     transition_counts = {} # Dict[State str][Action str] = TransitionCount int
     state_actions = {} # Dict[State str] = [Action str, Action str]
+    quinemccluskey = None
 
     def __init__(self, filename):
         self.load_from_json_abm(filename)
@@ -164,6 +167,7 @@ class Policy(object):
 
         return qm_minimization, master_predicate_list
 
+
     def solve_for_state_description_cover(self, state_list, total_state_list=None):
         '''
         # Solves for the best covering set of predicates that describes a list of states
@@ -172,19 +176,18 @@ class Policy(object):
         state_list : List of states to include in description
         total_state_list : List of states to consider in cover solution
 
-        ##### RETURNS #####
-        Returns predicate cover set, precision measures -- overstatement (#fp / #tp), understatement (#fn / #tp)
         '''
-        overstatement = 0.
-        understatement = 0.
-
         include_table = {}
         exclude_table = {}
+        dc_table = {}
 
         positive_minterms = []
         negative_minterms = []
+        dc_minterms = []
 
         predicates_list = self.predicate_list
+
+        # total state list: all states
         if total_state_list is None:
             total_state_list = self.states
         nonspec_is_negative = False
@@ -203,6 +206,10 @@ class Policy(object):
                     predicate_subset.append(idx)
                     break
 
+        qm_predicate_subset = [self.predicate_list[idx] for idx in predicate_subset]
+        self.quinemccluskey = QM(qm_predicate_subset)
+
+
         for state in total_state_list:
             predicates, predicates_list = self.get_predicates(state, predicate_subset)  # List of boolean values
             val = 0
@@ -212,21 +219,27 @@ class Policy(object):
             if state in state_list:
                 if val not in include_table:
                     include_table[val] = 1
-                else:
-                    include_table[val] += 1
             else:
                 if val not in exclude_table:
                     exclude_table[val] = 1
-                else:
-                    exclude_table[val] += 1
 
-        # IDEA: Can use frequency of minterms in truth_table as measure for most important minterms
+        binary_strings = ["".join(seq) for seq in itertools.product("01", repeat=len(predicate_subset))]
+
+        for binary_string in binary_strings:
+            val = 0
+            for idx in range(0, len(binary_string)):
+                val |= int(binary_string[idx]) << idx
+
+            if val not in include_table and val not in exclude_table:
+                dc_table[val] = 1
+
+        dc_minterms = dc_table.keys()
 
         # # Collect all minterms
         positive_minterms = include_table.keys()
-        for minterm in include_table:
+        for minterm in include_table.keys():
             # print "Added positive minterm: %s (%s)" % (str(minterm), b2s(minterm,len(predicates_list)))
-            if minterm in exclude_table:
+            if minterm in exclude_table.keys():
                 print ("WARNING: positive minterm found in negative minterm table. Removing from negative minterm table.")  # Minterms can't be positive and negative.
                 del exclude_table[minterm]
 
@@ -244,24 +257,26 @@ class Policy(object):
         # Retrieve minimized formula describing state region:
         # qm_minimization is string in [0,1,X]* that indexes into final_predicate_list
         #   - first element in qm_minimization corresponds to last element of final_predicate_list
-        qm_minimization, qm_predicate_list = self.perform_boolean_minimization(predicates_list, positive_minterms, negative_minterms)
-        final_predicate_minimization = []
-        for minterm in qm_minimization:
-            final_predicate_minimization.append(minterm[::-1])
+        complexity, minterms = self.quinemccluskey.solve(ones = list(positive_minterms), dc= list(dc_minterms))
+        resolve = self.quinemccluskey.get_function(minterms)
+        # qm_minimization, qm_predicate_list =
+        # final_predicate_minimization = []
+        # for minterm in qm_minimization:
+        #     final_predicate_minimization.append(minterm[::-1])
 
-        if DEBUG:
-            print ("Initial QM Minimization: %s" % qm_minimization[::-1])
+        # if DEBUG:
+        #     print ("Initial QM Minimization: %s" % qm_minimization[::-1])
 
-        final_predicate_list = qm_predicate_list
+        # final_predicate_list = qm_predicate_list
         time2 = datetime.datetime.now()
         time_diff = time2-time1
 
-        if DEBUG:
-            print ("Final QM Minimization: %s" % final_predicate_minimization)
-            print ("Predicates: %s" % str(predicates_list))
+        # if DEBUG:
+        #     print ("Final QM Minimization: %s" % final_predicate_minimization)
+        #     print ("Predicates: %s" % str(predicates_list))
 
-        state_description = (final_predicate_minimization, final_predicate_list)
-        return state_description, time_diff.total_seconds()
+        # state_description = (final_predicate_minimization, final_predicate_list)
+        return resolve, time_diff.total_seconds()
 
     def solve_for_state_description(self, state_list, total_state_list=None):
         '''
@@ -270,21 +285,22 @@ class Policy(object):
         '''
 
         # Get predicate explanations for action region
-        cover, time_tmp = self.solve_for_state_description_cover(state_list, total_state_list)
-        explanations = []
+        cover, time_tmp = self.solve_for_state_description_cover(state_list = state_list, total_state_list = total_state_list)
+        # explanations = []
 
-        values, predicate_subset_list = cover
-        for clause in values:
-            clause_explanation = []
-            for idx, predicate_value in enumerate(clause):
-                if predicate_value == '1':   clause_explanation.append(predicate_subset_list[idx])
-                elif predicate_value == '0':  clause_explanation.append("Not " + predicate_subset_list[idx])
+        # values, predicate_subset_list = cover
+        # for clause in values:
+        #     clause_explanation = []
+        #     for idx, predicate_value in enumerate(clause):
+        #         if predicate_value == '1':   clause_explanation.append(predicate_subset_list[idx])
+        #         elif predicate_value == '0':  clause_explanation.append("Not " + predicate_subset_list[idx])
 
-        clause_summary = ' and '.join(clause_explanation)
-        if clause_summary not in explanations:
-            explanations.append(clause_summary)
+        # clause_summary = ' and '.join(clause_explanation)
+        # if clause_summary not in explanations:
+        #     explanations.append(clause_summary)
 
-        return ' ---or--- '.join(explanations), time_tmp
+        # return ' ---or--- '.join(explanations), time_tmp
+        return cover, time_tmp
 
     def generate_action_cluster_descriptions(self, state_list, action_list=None, threshold=5):
         '''
@@ -394,7 +410,7 @@ timeout = args.timeout
 
 action_testing = {
     "domains/ex-blocksworld/p1.json": ['pick-up_b5_b4', 'pick-up-from-table_b3'],
-    "domains/blocksworld-new/p1.json": [],
+    "domains/blocksworld-new/p1.json": ['put-down_b2'],
     "domains/elevators/p1.json": ['collect_c2_f2_p2', 'go-up_e2_f1_f2'],
     "domains/tiny-triangle-tireworld/p1.json": [],
     "domains/traffic-light/p1.json": ['PHASE_NS_GREEN', 'PHASE_NSL_GREEN'],
@@ -406,7 +422,7 @@ predicates_per_problem = {
     "domains/ex-blocksworld/p2.json": [],
     "domains/ex-blocksworld/p3.json": [],
 
-    "domains/blocksworld-new/p1.json": [(["on-table(b1)"], [])],
+    "domains/blocksworld-new/p1.json": [(["emptyhand()"], [])],
     "domains/blocksworld-new/p2.json": [],
     "domains/blocksworld-new/p3.json": [],
 
