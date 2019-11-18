@@ -6,7 +6,7 @@ import func_timeout
 import itertools
 from qm import *
 
-DEBUG = True
+DEBUG = False
 
 def get_trace_limit(filename):
     # These are the capped # of traces used for the kcm eval -- gives us a decent number of state/action pairs
@@ -257,10 +257,8 @@ class Policy(object):
         # Retrieve minimized formula describing state region:
         # qm_minimization is string in [0,1,X]* that indexes into final_predicate_list
         #   - first element in qm_minimization corresponds to last element of final_predicate_list
-        print ("Starting boolean minimization")
         complexity, minterms = self.quinemccluskey.solve(ones = list(positive_minterms), dc= list(dc_minterms))
         resolve = self.quinemccluskey.get_function(minterms)
-        print ("RESOLVE " + str(resolve))
         # qm_minimization, qm_predicate_list =
         # final_predicate_minimization = []
         # for minterm in qm_minimization:
@@ -278,7 +276,7 @@ class Policy(object):
         #     print ("Predicates: %s" % str(predicates_list))
 
         # state_description = (final_predicate_minimization, final_predicate_list)
-        return (resolve, resolve), time_diff.total_seconds()
+        return resolve, time_diff.total_seconds()
 
     def solve_for_state_description(self, state_list, total_state_list=None):
         '''
@@ -288,20 +286,21 @@ class Policy(object):
 
         # Get predicate explanations for action region
         cover, time_tmp = self.solve_for_state_description_cover(state_list = state_list, total_state_list = total_state_list)
-        explanations = []
+        # explanations = []
 
-        values, predicate_subset_list = cover
-        for clause in values:
-            clause_explanation = []
-            for idx, predicate_value in enumerate(clause):
-                if predicate_value == '1':   clause_explanation.append(predicate_subset_list[idx])
-                elif predicate_value == '0':  clause_explanation.append("Not " + predicate_subset_list[idx])
+        # values, predicate_subset_list = cover
+        # for clause in values:
+        #     clause_explanation = []
+        #     for idx, predicate_value in enumerate(clause):
+        #         if predicate_value == '1':   clause_explanation.append(predicate_subset_list[idx])
+        #         elif predicate_value == '0':  clause_explanation.append("Not " + predicate_subset_list[idx])
 
-        clause_summary = ' and '.join(clause_explanation)
-        if clause_summary not in explanations:
-            explanations.append(clause_summary)
+        # clause_summary = ' and '.join(clause_explanation)
+        # if clause_summary not in explanations:
+        #     explanations.append(clause_summary)
 
-        return ' ---or--- '.join(explanations), time_tmp
+        # return ' ---or--- '.join(explanations), time_tmp
+        return cover, time_tmp
 
     def generate_action_cluster_descriptions(self, state_list, action_list=None, threshold=5):
         '''
@@ -410,10 +409,8 @@ args = parser.parse_args()
 timeout = args.timeout
 
 action_testing = {
-    "domains/blocksworld-new/p1.json": ['pick-up_b5_b4', 'pick-up-from-table_b3'],
-
     "domains/ex-blocksworld/p1.json": ['pick-up_b5_b4', 'pick-up-from-table_b3'],
-    "domains/blocksworld-new/p1.json": [],
+    "domains/blocksworld-new/p1.json": ['put-down_b2'],
     "domains/elevators/p1.json": ['collect_c2_f2_p2', 'go-up_e2_f1_f2'],
     "domains/tiny-triangle-tireworld/p1.json": [],
     "domains/traffic-light/p1.json": ['PHASE_NS_GREEN', 'PHASE_NSL_GREEN'],
@@ -425,7 +422,7 @@ predicates_per_problem = {
     "domains/ex-blocksworld/p2.json": [],
     "domains/ex-blocksworld/p3.json": [],
 
-    "domains/blocksworld-new/p1.json": [(["on-table(b1)"], [])],
+    "domains/blocksworld-new/p1.json": [(["emptyhand()"], [])],
     "domains/blocksworld-new/p2.json": [],
     "domains/blocksworld-new/p3.json": [],
 
