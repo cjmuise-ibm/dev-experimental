@@ -206,7 +206,8 @@ class Policy(object):
                     predicate_subset.append(idx)
                     break
 
-        self.quinemccluskey = QM(list(map(str,predicate_subset)))
+        qm_predicate_subset = [self.predicate_list[idx] for idx in predicate_subset]
+        self.quinemccluskey = QM(qm_predicate_subset)
 
 
         for state in total_state_list:
@@ -260,7 +261,7 @@ class Policy(object):
         complexity, minterms = self.quinemccluskey.solve(ones = list(positive_minterms), dc= list(dc_minterms))
         resolve = self.quinemccluskey.get_function(minterms)
         print ("RESOLVE " + str(resolve))
-        # qm_minimization, qm_predicate_list = 
+        # qm_minimization, qm_predicate_list =
         # final_predicate_minimization = []
         # for minterm in qm_minimization:
         #     final_predicate_minimization.append(minterm[::-1])
